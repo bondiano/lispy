@@ -29,6 +29,13 @@ pub type Value {
   Nil
 }
 
+pub fn show(value: Value) -> String {
+  case value {
+    String(text) -> text
+    _ -> to_string(value)
+  }
+}
+
 pub fn to_string(value: Value) -> String {
   case value {
     Integer(x) -> int.to_string(x)
@@ -54,7 +61,9 @@ pub fn to_string(value: Value) -> String {
       "(macro (" <> arguments <> ") (" <> body <> "))"
     }
 
-    Cons(car, cdr) -> "(" <> to_string(car) <> " " <> to_string(cdr) <> ")"
+    Cons(car, cdr) -> {
+      "(" <> cons_to_string(car, cdr) <> ")"
+    }
 
     Dict(d) ->
       "{"
@@ -67,6 +76,15 @@ pub fn to_string(value: Value) -> String {
       <> "}"
 
     Nil -> "nil"
+  }
+}
+
+fn cons_to_string(car: Value, cdr: Value) -> String {
+  case cdr {
+    Nil -> to_string(car)
+    Cons(next_car, next_cdr) ->
+      to_string(car) <> " " <> cons_to_string(next_car, next_cdr)
+    _ -> to_string(car) <> " . " <> to_string(cdr)
   }
 }
 

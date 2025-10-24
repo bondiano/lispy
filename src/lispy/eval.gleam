@@ -8,6 +8,7 @@ import gleam/result
 import gleam/string
 import lispy/builtins
 import lispy/environment.{type Environment}
+import lispy/parser
 import lispy/value.{type Value}
 
 pub type EvaluationError {
@@ -48,6 +49,7 @@ pub fn eval(
         "set!" -> eval_set(environment, rest)
         "lambda" | "λ" -> eval_lambda(environment, rest)
         "begin" -> eval_begin(environment, rest)
+        "load" -> eval_load(environment, rest)
 
         _ -> eval_application(environment, form)
       }
@@ -150,6 +152,81 @@ fn eval_begin(
     }
     _ -> Error(InvalidFormError(value.Cons(value.Symbol("begin"), forms)))
   }
+}
+
+fn eval_load(
+  environment: Environment(Value),
+  args: Value,
+) -> Result(#(Value, Environment(Value)), EvaluationError) {
+  case args {
+    value.Cons(value.String(filepath), value.Nil) -> {
+      case load_file_helper(filepath, environment) {
+        Ok(new_env) -> Ok(#(value.Nil, new_env))
+        Error(msg) -> Error(TypeError("Load error: " <> msg))
+      }
+    }
+    _ -> Error(InvalidFormError(value.Cons(value.Symbol("load"), args)))
+  }
+}
+
+fn load_file_helper(
+  filepath: String,
+  env: Environment(Value),
+) -> Result(Environment(Value), String) {
+  case simplifile_read(filepath) {
+    Ok(content) -> load_string(content, env)
+    Error(_) -> Error("Could not read file: " <> filepath)
+  }
+}
+
+fn load_string(
+  input: String,
+  env: Environment(Value),
+) -> Result(Environment(Value), String) {
+  case parser_parse(input) {
+    Ok(option.Some(#(parsed, rest))) -> {
+      case eval(env, parsed) {
+        Ok(#(_, new_env)) -> {
+          case string.trim(rest) {
+            "" -> Ok(new_env)
+            remaining -> load_string(remaining, new_env)
+          }
+        }
+        Error(err) -> Error(error_to_string_helper(err))
+      }
+    }
+    Ok(option.None) -> Ok(env)
+    Error(err) -> Error("Parse error: " <> err)
+  }
+}
+
+@external(erlang, "simplifile", "read")
+fn simplifile_read(filepath: String) -> Result(String, Nil)
+
+fn parser_parse(
+  input: String,
+) -> Result(option.Option(#(Value, String)), String) {
+  parser.parse(input)
+}
+
+fn error_to_string_helper(err: EvaluationError) -> String {
+  case err {
+    ZeroDivisionError -> "Division by zero"
+    UndefinedVariableError(name) -> "Undefined variable: " <> name
+    InvalidFormError(_) -> "Invalid form"
+    ArityError(name, expected, got) ->
+      "Arity error in "
+      <> name
+      <> ": expected "
+      <> int_to_str(expected)
+      <> " got "
+      <> int_to_str(got)
+    TypeError(msg) -> msg
+  }
+}
+
+fn int_to_str(n: Int) -> String {
+  int.to_string(n)
 }
 
 fn eval_application(
@@ -440,7 +517,7 @@ fn builtin_list(args: List(Value)) -> Result(Value, EvaluationError) {
 }
 
 fn builtin_print(args: List(Value)) -> Result(Value, EvaluationError) {
-  list.each(args, fn(arg) { io.println(value.to_string(arg)) })
+  list.each(args, fn(arg) { io.println(value.show(arg)) })
   Ok(value.Nil)
 }
 
