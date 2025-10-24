@@ -6,6 +6,7 @@ import simplifile
 
 import lispy/builtins
 import lispy/environment.{type Environment}
+import lispy/error
 import lispy/eval
 import lispy/parser
 import lispy/value.{type Value}
@@ -80,11 +81,11 @@ fn erlang_read_line(prompt: String) -> Result(String, Nil)
 fn eval_string(
   input: String,
   env: Environment(Value),
-) -> Result(#(Value, Environment(Value)), eval.EvaluationError) {
+) -> Result(#(Value, Environment(Value)), error.EvaluationError) {
   case parser.parse(input) {
     Ok(Some(#(parsed, _))) -> eval.eval(env, parsed)
-    Ok(None) -> Error(eval.TypeError("Empty input"))
-    Error(err) -> Error(eval.TypeError("Parse error: " <> err))
+    Ok(None) -> Error(error.TypeError("Empty input"))
+    Error(err) -> Error(error.TypeError("Parse error: " <> err))
   }
 }
 
@@ -106,7 +107,7 @@ pub fn load_file(
 fn eval_all(
   input: String,
   env: Environment(Value),
-) -> Result(Environment(Value), eval.EvaluationError) {
+) -> Result(Environment(Value), error.EvaluationError) {
   case parser.parse(input) {
     Ok(Some(#(parsed, rest))) -> {
       case eval.eval(env, parsed) {
@@ -120,22 +121,22 @@ fn eval_all(
       }
     }
     Ok(None) -> Ok(env)
-    Error(err) -> Error(eval.TypeError("Parse error: " <> err))
+    Error(err) -> Error(error.TypeError("Parse error: " <> err))
   }
 }
 
-fn error_to_string(err: eval.EvaluationError) -> String {
+fn error_to_string(err: error.EvaluationError) -> String {
   case err {
-    eval.ZeroDivisionError -> "Division by zero"
-    eval.UndefinedVariableError(name) -> "Undefined variable: " <> name
-    eval.InvalidFormError(form) -> "Invalid form: " <> value.to_string(form)
-    eval.ArityError(name, expected, got) ->
+    error.ZeroDivisionError -> "Division by zero"
+    error.UndefinedVariableError(name) -> "Undefined variable: " <> name
+    error.InvalidFormError(form) -> "Invalid form: " <> value.to_string(form)
+    error.ArityError(name, expected, got) ->
       "Arity error in "
       <> name
       <> ": expected "
       <> int.to_string(expected)
       <> " arguments, got "
       <> int.to_string(got)
-    eval.TypeError(msg) -> "Type error: " <> msg
+    error.TypeError(msg) -> "Type error: " <> msg
   }
 }

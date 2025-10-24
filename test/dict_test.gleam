@@ -5,11 +5,12 @@ import gleam/option.{Some}
 import gleeunit/should
 
 import lispy/builtins
+import lispy/error
 import lispy/eval
 import lispy/parser
 import lispy/value
 
-fn eval_string(input: String) -> Result(value.Value, eval.EvaluationError) {
+fn eval_string(input: String) -> Result(value.Value, error.EvaluationError) {
   let assert Ok(Some(#(parsed, _))) = parser.parse(input)
   let env = builtins.create_global_env()
   case eval.eval(env, parsed) {
@@ -23,17 +24,17 @@ fn assert_eval(input: String, expected: value.Value) {
     Ok(result) -> should.equal(result, expected)
     Error(e) -> {
       let error_msg = case e {
-        eval.ZeroDivisionError -> "ZeroDivisionError"
-        eval.UndefinedVariableError(name) -> "UndefinedVariableError: " <> name
-        eval.InvalidFormError(_) -> "InvalidFormError"
-        eval.ArityError(name, expected, got) ->
+        error.ZeroDivisionError -> "ZeroDivisionError"
+        error.UndefinedVariableError(name) -> "UndefinedVariableError: " <> name
+        error.InvalidFormError(_) -> "InvalidFormError"
+        error.ArityError(name, expected, got) ->
           "ArityError: "
           <> name
           <> " expected "
           <> int.to_string(expected)
           <> " got "
           <> int.to_string(got)
-        eval.TypeError(msg) -> "TypeError: " <> msg
+        error.TypeError(msg) -> "TypeError: " <> msg
       }
       panic as error_msg
     }

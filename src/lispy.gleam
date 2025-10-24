@@ -7,6 +7,7 @@ import simplifile
 
 import lispy/builtins
 import lispy/environment
+import lispy/error
 import lispy/eval
 import lispy/parser
 import lispy/repl
@@ -103,18 +104,18 @@ fn eval_all(
   }
 }
 
-fn error_to_string(err: eval.EvaluationError) -> String {
+fn error_to_string(err: error.EvaluationError) -> String {
   case err {
-    eval.ZeroDivisionError -> "Division by zero"
-    eval.UndefinedVariableError(name) -> "Undefined variable: " <> name
-    eval.InvalidFormError(form) -> "Invalid form: " <> value.to_string(form)
-    eval.ArityError(name, expected, got) ->
+    error.ZeroDivisionError -> "Division by zero"
+    error.UndefinedVariableError(name) -> "Undefined variable: " <> name
+    error.InvalidFormError(form) -> "Invalid form: " <> value.to_string(form)
+    error.ArityError(name, expected, got) ->
       "Arity error in "
       <> name
       <> ": expected "
       <> int.to_string(expected)
       <> " arguments, got "
       <> int.to_string(got)
-    eval.TypeError(msg) -> "Type error: " <> msg
+    error.TypeError(msg) -> "Type error: " <> msg
   }
 }

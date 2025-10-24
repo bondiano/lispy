@@ -6,19 +6,17 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
-import lispy/builtins
-import lispy/environment.{type Environment}
-import lispy/parser
-import lispy/value.{type Value}
 import simplifile
 
-pub type EvaluationError {
-  ZeroDivisionError
-  UndefinedVariableError(String)
-  InvalidFormError(Value)
-  ArityError(name: String, expected: Int, actual: Int)
-  TypeError(String)
+import lispy/builtins
+import lispy/environment.{type Environment}
+import lispy/error.{
+  type EvaluationError, ArityError, InvalidFormError, TypeError,
+  UndefinedVariableError, ZeroDivisionError,
 }
+import lispy/expand
+import lispy/parser
+import lispy/value.{type Value}
 
 pub fn eval(
   environment: Environment(Value),
@@ -49,6 +47,8 @@ pub fn eval(
         "define" -> eval_define(environment, rest)
         "set!" -> eval_set(environment, rest)
         "lambda" | "λ" -> eval_lambda(environment, rest)
+        "defmacro" -> eval_defmacro(environment, rest)
+        "expand-macro" -> eval_expand_macro(environment, rest)
         "begin" -> eval_begin(environment, rest)
         "load" -> eval_load(environment, rest)
 
@@ -137,6 +137,35 @@ fn eval_lambda(
       Ok(#(value.Lambda(param_list, body_list, environment), environment))
     }
     _ -> Error(InvalidFormError(value.Cons(value.Symbol("lambda"), args)))
+  }
+}
+
+fn eval_defmacro(
+  environment: Environment(Value),
+  args: Value,
+) -> Result(#(Value, Environment(Value)), EvaluationError) {
+  case args {
+    value.Cons(value.Symbol(name), value.Cons(params, body)) -> {
+      use param_list <- result.try(list_to_gleam_list(params))
+      use body_list <- result.try(list_to_gleam_list(body))
+      let macro_value = value.Macro(param_list, body_list)
+      let new_env = environment.define(environment, name, macro_value)
+      Ok(#(macro_value, new_env))
+    }
+    _ -> Error(InvalidFormError(value.Cons(value.Symbol("defmacro"), args)))
+  }
+}
+
+fn eval_expand_macro(
+  environment: Environment(Value),
+  args: Value,
+) -> Result(#(Value, Environment(Value)), EvaluationError) {
+  case args {
+    value.Cons(expr, value.Nil) -> {
+      use expanded <- result.try(expand.expand(environment, expr))
+      Ok(#(expanded, environment))
+    }
+    _ -> Error(InvalidFormError(value.Cons(value.Symbol("expand-macro"), args)))
   }
 }
 
@@ -232,6 +261,20 @@ fn eval_application(
   form: Value,
 ) -> Result(#(Value, Environment(Value)), EvaluationError) {
   case form {
+    value.Cons(value.Symbol(name), args_expr) -> {
+      case environment.get(environment, name) {
+        Some(value.Macro(_, _)) -> {
+          use expanded <- result.try(expand.expand(environment, form))
+          eval(environment, expanded)
+        }
+        _ -> {
+          use #(func, env1) <- result.try(eval(environment, value.Symbol(name)))
+          use #(args, env2) <- result.try(eval_list(env1, args_expr))
+          use result_val <- result.try(apply(env2, func, args))
+          Ok(#(result_val, env2))
+        }
+      }
+    }
     value.Cons(func_expr, args_expr) -> {
       use #(func, env1) <- result.try(eval(environment, func_expr))
       use #(args, env2) <- result.try(eval_list(env1, args_expr))

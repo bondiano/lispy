@@ -5,11 +5,12 @@ import gleeunit/should
 
 import lispy/builtins
 import lispy/environment
+import lispy/error
 import lispy/eval
 import lispy/parser
 import lispy/value
 
-fn eval_string(input: String) -> Result(value.Value, eval.EvaluationError) {
+fn eval_string(input: String) -> Result(value.Value, error.EvaluationError) {
   let assert Ok(Some(#(parsed, _))) = parser.parse(input)
   let env = builtins.create_global_env()
   case eval.eval(env, parsed) {
@@ -23,17 +24,17 @@ fn assert_eval(input: String, expected: value.Value) {
     Ok(result) -> should.equal(result, expected)
     Error(e) -> {
       let error_msg = case e {
-        eval.ZeroDivisionError -> "ZeroDivisionError"
-        eval.UndefinedVariableError(name) -> "UndefinedVariableError: " <> name
-        eval.InvalidFormError(_) -> "InvalidFormError"
-        eval.ArityError(name, expected, got) ->
+        error.ZeroDivisionError -> "ZeroDivisionError"
+        error.UndefinedVariableError(name) -> "UndefinedVariableError: " <> name
+        error.InvalidFormError(_) -> "InvalidFormError"
+        error.ArityError(name, expected, got) ->
           "ArityError: "
           <> name
           <> " expected "
           <> int.to_string(expected)
           <> " got "
           <> int.to_string(got)
-        eval.TypeError(msg) -> "TypeError: " <> msg
+        error.TypeError(msg) -> "TypeError: " <> msg
       }
       panic as error_msg
     }
@@ -147,7 +148,7 @@ pub fn eval_divide_float_result_test() {
 
 pub fn eval_divide_by_zero_test() {
   case eval_string("(/ 10 0)") {
-    Error(eval.ZeroDivisionError) -> True
+    Error(error.ZeroDivisionError) -> True
     _ -> False
   }
   |> should.be_true()
@@ -159,7 +160,7 @@ pub fn eval_mod_test() {
 
 pub fn eval_mod_zero_test() {
   case eval_string("(mod 10 0)") {
-    Error(eval.ZeroDivisionError) -> True
+    Error(error.ZeroDivisionError) -> True
     _ -> False
   }
   |> should.be_true()
@@ -351,7 +352,7 @@ pub fn eval_set_existing_variable_test() {
 
 pub fn eval_set_undefined_variable_error_test() {
   case eval_string("(set! x 10)") {
-    Error(eval.UndefinedVariableError(_)) -> True
+    Error(error.UndefinedVariableError(_)) -> True
     _ -> False
   }
   |> should.be_true()
@@ -467,7 +468,7 @@ pub fn eval_map_implementation_test() {
 
 pub fn eval_undefined_variable_error_test() {
   case eval_string("undefined-var") {
-    Error(eval.UndefinedVariableError("undefined-var")) -> True
+    Error(error.UndefinedVariableError("undefined-var")) -> True
     _ -> False
   }
   |> should.be_true()
@@ -481,7 +482,7 @@ pub fn eval_arity_error_test() {
   |> should.be_true()
 
   case eval_string("(/ 1)") {
-    Error(eval.ArityError("/", 2, 1)) -> True
+    Error(error.ArityError("/", 2, 1)) -> True
     _ -> False
   }
   |> should.be_true()
@@ -489,7 +490,7 @@ pub fn eval_arity_error_test() {
 
 pub fn eval_type_error_test() {
   case eval_string("(+ 1 \"string\")") {
-    Error(eval.TypeError(_)) -> True
+    Error(error.TypeError(_)) -> True
     _ -> False
   }
   |> should.be_true()
@@ -497,7 +498,7 @@ pub fn eval_type_error_test() {
 
 pub fn eval_invalid_lambda_params_test() {
   case eval_string("((lambda (1 2) (+ 1 2)) 3 4)") {
-    Error(eval.TypeError(_)) -> True
+    Error(error.TypeError(_)) -> True
     _ -> False
   }
   |> should.be_true()
