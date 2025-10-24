@@ -1,7 +1,9 @@
+import gleam/dict
 import gleam/float
 import gleam/int
 import gleam/list
 import gleam/string
+
 import lispy/environment.{type Environment}
 
 pub type Value {
@@ -18,6 +20,10 @@ pub type Value {
   )
   Macro(arguments: List(Value), body: List(Value))
 
+  Builtin(name: String)
+
+  Dict(dict.Dict(Value, Value))
+
   Cons(Value, Value)
 
   Nil
@@ -29,6 +35,7 @@ pub fn to_string(value: Value) -> String {
     Double(x) -> float.to_string(x)
     String(text) -> "\"" <> text <> "\""
     Symbol(name) -> name
+    Builtin(name) -> name
     Boolean(b) ->
       case b {
         True -> "true"
@@ -49,6 +56,46 @@ pub fn to_string(value: Value) -> String {
 
     Cons(car, cdr) -> "(" <> to_string(car) <> " " <> to_string(cdr) <> ")"
 
+    Dict(d) ->
+      "{"
+      <> dict.to_list(d)
+      |> list.map(fn(entry) {
+        let #(key, value) = entry
+        to_string(key) <> " " <> to_string(value)
+      })
+      |> string.join(" ")
+      <> "}"
+
     Nil -> "nil"
+  }
+}
+
+pub fn equal(a: Value, b: Value) -> Bool {
+  case a, b {
+    Integer(x), Integer(y) -> x == y
+    Double(x), Double(y) -> x == y
+    String(x), String(y) -> x == y
+    Symbol(x), Symbol(y) -> x == y
+    Boolean(x), Boolean(y) -> x == y
+    Builtin(x), Builtin(y) -> x == y
+    Nil, Nil -> True
+    Cons(car_a, cdr_a), Cons(car_b, cdr_b) ->
+      equal(car_a, car_b) && equal(cdr_a, cdr_b)
+    _, _ -> False
+  }
+}
+
+pub fn count_list(lst: Value) -> Int {
+  case lst {
+    Nil -> 0
+    Cons(_, rest) -> 1 + count_list(rest)
+    _ -> 0
+  }
+}
+
+pub fn from_list(lst: List(Value)) -> Value {
+  case lst {
+    [] -> Nil
+    [head, ..rest] -> Cons(head, from_list(rest))
   }
 }
