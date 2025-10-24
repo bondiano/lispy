@@ -60,29 +60,75 @@ fn expand_list(
 }
 
 fn expand_macro(
-  params: List(Value),
+  params: value.Params,
   body: List(Value),
   args: Value,
 ) -> Result(Value, EvaluationError) {
   use arg_values <- result.try(list_to_gleam_list(args))
 
-  let param_count = list.length(params)
-  let arg_count = list.length(arg_values)
+  case params {
+    value.Fixed(param_list) -> {
+      let param_count = list.length(param_list)
+      let arg_count = list.length(arg_values)
 
-  case param_count == arg_count {
-    False -> Error(ArityError("macro", param_count, arg_count))
-    True -> {
-      use substitutions <- result.try(build_substitutions(params, arg_values))
+      case param_count == arg_count {
+        False -> Error(ArityError("macro", param_count, arg_count))
+        True -> {
+          use substitutions <- result.try(build_substitutions_fixed(
+            param_list,
+            arg_values,
+          ))
+
+          case body {
+            [] -> Ok(value.Nil)
+            [expr, ..] -> substitute(expr, substitutions)
+          }
+        }
+      }
+    }
+
+    value.Variadic(variadic_name) -> {
+      let substitutions =
+        dict.from_list([#(variadic_name, value.from_list(arg_values))])
 
       case body {
         [] -> Ok(value.Nil)
         [expr, ..] -> substitute(expr, substitutions)
       }
     }
+
+    value.FixedAndVariadic(fixed, variadic_name) -> {
+      let fixed_count = list.length(fixed)
+      let arg_count = list.length(arg_values)
+
+      case arg_count >= fixed_count {
+        False -> Error(ArityError("macro", fixed_count, arg_count))
+        True -> {
+          let #(fixed_args, rest_args) = list.split(arg_values, fixed_count)
+
+          use substitutions <- result.try(build_substitutions_fixed(
+            fixed,
+            fixed_args,
+          ))
+
+          let substitutions =
+            dict.insert(
+              substitutions,
+              variadic_name,
+              value.from_list(rest_args),
+            )
+
+          case body {
+            [] -> Ok(value.Nil)
+            [expr, ..] -> substitute(expr, substitutions)
+          }
+        }
+      }
+    }
   }
 }
 
-fn build_substitutions(
+fn build_substitutions_fixed(
   params: List(Value),
   args: List(Value),
 ) -> Result(Dict(String, Value), EvaluationError) {

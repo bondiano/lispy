@@ -21,6 +21,7 @@ pub fn create_global_env() -> Environment(Value) {
     |> environment.define("car", value.Builtin("car"))
     |> environment.define("cdr", value.Builtin("cdr"))
     |> environment.define("list", value.Builtin("list"))
+    |> environment.define("null?", value.Builtin("null?"))
     // Dict operations
     |> environment.define("dict-get", value.Builtin("dict-get"))
     |> environment.define("dict-set", value.Builtin("dict-set"))
@@ -33,6 +34,7 @@ pub fn create_global_env() -> Environment(Value) {
     // Other
     |> environment.define("eval", value.Builtin("eval"))
     |> environment.define("symbol", value.Builtin("symbol"))
+    |> environment.define("apply", value.Builtin("apply"))
 
   env
 }

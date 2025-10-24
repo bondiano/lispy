@@ -544,3 +544,108 @@ pub fn eval_dict_nested_test() {
     _ -> panic as "Expected Dict value"
   }
 }
+
+pub fn test_variadic_lambda_only() {
+  let input = "((lambda (. args) args) 1 2 3)"
+  let expected =
+    value.Cons(
+      value.Integer(1),
+      value.Cons(value.Integer(2), value.Cons(value.Integer(3), value.Nil)),
+    )
+  assert_eval(input, expected)
+}
+
+pub fn test_variadic_lambda_no_args() {
+  let input = "((lambda (. args) args))"
+  assert_eval(input, value.Nil)
+}
+
+pub fn test_variadic_lambda_fixed_and_variadic() {
+  let input = "((lambda (x . args) (cons x args)) 1 2 3)"
+  let expected =
+    value.Cons(
+      value.Integer(1),
+      value.Cons(value.Integer(2), value.Cons(value.Integer(3), value.Nil)),
+    )
+  assert_eval(input, expected)
+}
+
+pub fn test_variadic_lambda_fixed_only() {
+  let input = "((lambda (x . args) x) 1 2 3)"
+  assert_eval(input, value.Integer(1))
+}
+
+pub fn test_variadic_lambda_fixed_no_rest() {
+  let input = "((lambda (x . args) (cons x args)) 1)"
+  let expected = value.Cons(value.Integer(1), value.Nil)
+  assert_eval(input, expected)
+}
+
+pub fn test_variadic_lambda_multiple_fixed() {
+  let input = "((lambda (x y . args) (list x y args)) 1 2 3 4)"
+  let expected =
+    value.Cons(
+      value.Integer(1),
+      value.Cons(
+        value.Integer(2),
+        value.Cons(
+          value.Cons(value.Integer(3), value.Cons(value.Integer(4), value.Nil)),
+          value.Nil,
+        ),
+      ),
+    )
+  assert_eval(input, expected)
+}
+
+pub fn test_variadic_lambda_arity_error() {
+  let input = "((lambda (x y . args) x) 1)"
+  case eval_string(input) {
+    Error(error.ArityError("lambda", 2, 1)) -> True
+    _ -> False
+  }
+  |> should.be_true()
+}
+
+// null? tests
+
+pub fn test_null_with_nil() {
+  assert_eval("(null? nil)", value.Boolean(True))
+}
+
+pub fn test_null_with_list() {
+  assert_eval("(null? (list 1 2))", value.Boolean(False))
+}
+
+pub fn test_null_with_integer() {
+  assert_eval("(null? 42)", value.Boolean(False))
+}
+
+pub fn test_apply_with_plus() {
+  assert_eval("(apply + (list 1 2 3 4 5))", value.Integer(15))
+}
+
+pub fn test_apply_with_lambda() {
+  let input = "(apply (lambda (x y) (+ x y)) (list 10 20))"
+  assert_eval(input, value.Integer(30))
+}
+
+pub fn test_apply_with_variadic_lambda() {
+  let input = "(apply (lambda (. args) args) (list 1 2 3))"
+  let expected =
+    value.Cons(
+      value.Integer(1),
+      value.Cons(value.Integer(2), value.Cons(value.Integer(3), value.Nil)),
+    )
+  assert_eval(input, expected)
+}
+
+pub fn test_recursive_variadic_sum() {
+  let input =
+    "(begin
+       (define sum (lambda (. args)
+         (if (null? args)
+             0
+             (+ (car args) (apply sum (cdr args))))))
+       (sum 1 2 3 4 5))"
+  assert_eval(input, value.Integer(15))
+}

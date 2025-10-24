@@ -132,9 +132,12 @@ fn eval_lambda(
 ) -> Result(#(Value, Environment(Value)), EvaluationError) {
   case args {
     value.Cons(params, body) -> {
-      use param_list <- result.try(list_to_gleam_list(params))
+      use parsed_params <- result.try(
+        value.parse_params(params)
+        |> result.map_error(TypeError),
+      )
       use body_list <- result.try(list_to_gleam_list(body))
-      Ok(#(value.Lambda(param_list, body_list, environment), environment))
+      Ok(#(value.Lambda(parsed_params, body_list, environment), environment))
     }
     _ -> Error(InvalidFormError(value.Cons(value.Symbol("lambda"), args)))
   }
@@ -146,9 +149,12 @@ fn eval_defmacro(
 ) -> Result(#(Value, Environment(Value)), EvaluationError) {
   case args {
     value.Cons(value.Symbol(name), value.Cons(params, body)) -> {
-      use param_list <- result.try(list_to_gleam_list(params))
+      use parsed_params <- result.try(
+        value.parse_params(params)
+        |> result.map_error(TypeError),
+      )
       use body_list <- result.try(list_to_gleam_list(body))
-      let macro_value = value.Macro(param_list, body_list)
+      let macro_value = value.Macro(parsed_params, body_list)
       let new_env = environment.define(environment, name, macro_value)
       Ok(#(macro_value, new_env))
     }
@@ -311,7 +317,7 @@ fn apply(
     }
 
     value.Builtin(name) -> {
-      apply_builtin(name, args)
+      apply_builtin(current_env, name, args)
     }
 
     _ -> Error(TypeError("Not a function: " <> value.to_string(func)))
@@ -320,28 +326,57 @@ fn apply(
 
 fn apply_lambda(
   current_env: Environment(Value),
-  params: List(Value),
+  params: value.Params,
   body: List(Value),
   closure_env: Environment(Value),
   args: List(Value),
 ) -> Result(Value, EvaluationError) {
-  let param_count = list.length(params)
-  let arg_count = list.length(args)
+  let env = environment.merge(closure_env, current_env) |> environment.extend()
 
-  case param_count == arg_count {
-    False -> Error(ArityError("lambda", param_count, arg_count))
-    True -> {
-      // Hybrid scoping: use closure_env for captured variables, but merge with
-      // current_env to support recursive function definitions
-      let base_env = environment.merge(closure_env, current_env)
-      let new_env = environment.extend(base_env)
-      use bound_env <- result.try(bind_params(new_env, params, args))
+  case params {
+    value.Fixed(param_list) -> {
+      let param_count = list.length(param_list)
+      let arg_count = list.length(args)
+
+      case param_count == arg_count {
+        False -> Error(ArityError("lambda", param_count, arg_count))
+        True -> {
+          use bound_env <- result.try(bind_params_fixed(env, param_list, args))
+          eval_body(bound_env, body)
+        }
+      }
+    }
+
+    value.Variadic(variadic_name) -> {
+      let bound_env =
+        environment.define(env, variadic_name, value.from_list(args))
       eval_body(bound_env, body)
+    }
+
+    value.FixedAndVariadic(fixed, variadic_name) -> {
+      let fixed_count = list.length(fixed)
+      let arg_count = list.length(args)
+
+      case arg_count >= fixed_count {
+        False -> Error(ArityError("lambda", fixed_count, arg_count))
+        True -> {
+          let #(fixed_args, rest_args) = list.split(args, fixed_count)
+
+          use bound_env <- result.try(bind_params_fixed(env, fixed, fixed_args))
+          let final_env =
+            environment.define(
+              bound_env,
+              variadic_name,
+              value.from_list(rest_args),
+            )
+          eval_body(final_env, body)
+        }
+      }
     }
   }
 }
 
-fn bind_params(
+fn bind_params_fixed(
   env: Environment(Value),
   params: List(Value),
   args: List(Value),
@@ -350,7 +385,7 @@ fn bind_params(
     [], [] -> Ok(env)
     [value.Symbol(name), ..rest_params], [arg, ..rest_args] -> {
       let new_env = environment.define(env, name, arg)
-      bind_params(new_env, rest_params, rest_args)
+      bind_params_fixed(new_env, rest_params, rest_args)
     }
     _, _ -> Error(TypeError("Invalid parameter list"))
   }
@@ -374,6 +409,7 @@ fn eval_body(
 }
 
 fn apply_builtin(
+  current_env: Environment(Value),
   name: String,
   args: List(Value),
 ) -> Result(Value, EvaluationError) {
@@ -398,6 +434,7 @@ fn apply_builtin(
     "car" -> builtin_car(args)
     "cdr" -> builtin_cdr(args)
     "list" -> builtin_list(args)
+    "null?" -> builtin_null(args)
 
     // Dict operations
     "dict-get" -> builtin_dict_get(args)
@@ -413,6 +450,7 @@ fn apply_builtin(
     // Other
     "eval" -> builtin_eval(args)
     "symbol" -> builtin_symbol(args)
+    "apply" -> builtin_apply_fn(current_env, args)
 
     _ -> Error(UndefinedVariableError(name))
   }
@@ -557,6 +595,14 @@ fn builtin_list(args: List(Value)) -> Result(Value, EvaluationError) {
   Ok(value.from_list(args))
 }
 
+fn builtin_null(args: List(Value)) -> Result(Value, EvaluationError) {
+  case args {
+    [value.Nil] -> Ok(value.Boolean(True))
+    [_] -> Ok(value.Boolean(False))
+    _ -> Error(ArityError("null?", 1, list.length(args)))
+  }
+}
+
 fn builtin_print(args: List(Value)) -> Result(Value, EvaluationError) {
   list.each(args, fn(arg) { io.println(value.show(arg)) })
   Ok(value.Nil)
@@ -599,6 +645,19 @@ fn builtin_symbol(args: List(Value)) -> Result(Value, EvaluationError) {
     [value.String(s)] -> Ok(value.Symbol(s))
     [_] -> Error(TypeError("symbol requires a string argument"))
     _ -> Error(ArityError("symbol", 1, list.length(args)))
+  }
+}
+
+fn builtin_apply_fn(
+  current_env: Environment(Value),
+  args: List(Value),
+) -> Result(Value, EvaluationError) {
+  case args {
+    [func, arg_list] -> {
+      use gleam_args <- result.try(list_to_gleam_list(arg_list))
+      apply(current_env, func, gleam_args)
+    }
+    _ -> Error(ArityError("apply", 2, list.length(args)))
   }
 }
 

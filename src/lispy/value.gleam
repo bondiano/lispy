@@ -6,6 +6,12 @@ import gleam/string
 
 import lispy/environment.{type Environment}
 
+pub type Params {
+  Fixed(List(Value))
+  Variadic(variadic_name: String)
+  FixedAndVariadic(fixed: List(Value), variadic_name: String)
+}
+
 pub type Value {
   Integer(Int)
   Double(Float)
@@ -13,12 +19,8 @@ pub type Value {
   Symbol(name: String)
   Boolean(Bool)
 
-  Lambda(
-    arguments: List(Value),
-    body: List(Value),
-    environment: Environment(Value),
-  )
-  Macro(arguments: List(Value), body: List(Value))
+  Lambda(arguments: Params, body: List(Value), environment: Environment(Value))
+  Macro(arguments: Params, body: List(Value))
 
   Builtin(name: String)
 
@@ -50,15 +52,15 @@ pub fn to_string(value: Value) -> String {
       }
 
     Lambda(arguments, body, _environment) -> {
-      let arguments = arguments |> list.map(to_string) |> string.join(" ")
+      let arguments_str = params_to_string(arguments)
       let body = body |> list.map(to_string) |> string.join(" ")
-      "(lambda (" <> arguments <> ") (" <> body <> "))"
+      "(lambda " <> arguments_str <> " (" <> body <> "))"
     }
 
     Macro(arguments, body) -> {
-      let arguments = arguments |> list.map(to_string) |> string.join(" ")
+      let arguments_str = params_to_string(arguments)
       let body = body |> list.map(to_string) |> string.join(" ")
-      "(macro (" <> arguments <> ") (" <> body <> "))"
+      "(macro " <> arguments_str <> " (" <> body <> "))"
     }
 
     Cons(car, cdr) -> {
@@ -85,6 +87,20 @@ fn cons_to_string(car: Value, cdr: Value) -> String {
     Cons(next_car, next_cdr) ->
       to_string(car) <> " " <> cons_to_string(next_car, next_cdr)
     _ -> to_string(car) <> " . " <> to_string(cdr)
+  }
+}
+
+fn params_to_string(params: Params) -> String {
+  case params {
+    Fixed(args) -> {
+      let args_str = args |> list.map(to_string) |> string.join(" ")
+      "(" <> args_str <> ")"
+    }
+    Variadic(name) -> "(. " <> name <> ")"
+    FixedAndVariadic(fixed, variadic) -> {
+      let fixed_str = fixed |> list.map(to_string) |> string.join(" ")
+      "(" <> fixed_str <> " . " <> variadic <> ")"
+    }
   }
 }
 
@@ -115,5 +131,35 @@ pub fn from_list(lst: List(Value)) -> Value {
   case lst {
     [] -> Nil
     [head, ..rest] -> Cons(head, from_list(rest))
+  }
+}
+
+pub fn parse_params(params: Value) -> Result(Params, String) {
+  case params {
+    Cons(Symbol("."), Cons(Symbol(name), Nil)) -> Ok(Variadic(name))
+
+    _ -> parse_params_helper(params, [])
+  }
+}
+
+fn parse_params_helper(
+  params: Value,
+  acc: List(Value),
+) -> Result(Params, String) {
+  case params {
+    Nil -> Ok(Fixed(list.reverse(acc)))
+
+    Cons(Symbol("."), Cons(Symbol(name), Nil)) ->
+      Ok(FixedAndVariadic(list.reverse(acc), name))
+
+    Cons(Symbol(_) as param, rest) -> {
+      case rest {
+        // Improper list
+        Symbol(name) -> Ok(FixedAndVariadic(list.reverse([param, ..acc]), name))
+        _ -> parse_params_helper(rest, [param, ..acc])
+      }
+    }
+
+    _ -> Error("Invalid parameter list")
   }
 }

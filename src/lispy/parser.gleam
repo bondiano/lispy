@@ -86,7 +86,7 @@ fn parse_list_items(
       Ok(#(list_to_cons(list.reverse(acc)), rest))
     }
 
-    // Improper list (a . b)
+    // Improper list (a . b) or variadic params (. args) or (x . args)
     "." <> rest -> {
       let rest = skip_whitespace_and_comments(rest)
       use #(tail, rest) <- result.try(parse_value(rest))
@@ -95,7 +95,11 @@ fn parse_list_items(
       case rest {
         ")" <> rest -> {
           case list.reverse(acc) {
-            [] -> Error("Invalid dotted list")
+            [] ->
+              Ok(#(
+                value.Cons(value.Symbol("."), value.Cons(tail, value.Nil)),
+                rest,
+              ))
             [head, ..rest_items] -> {
               let proper_part = list_to_cons(list.reverse(rest_items))
               Ok(#(cons_with_tail(proper_part, head, tail), rest))

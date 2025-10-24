@@ -207,3 +207,88 @@ pub fn test_defmacro_backwards_compat() {
 
   should.equal(result, value.Integer(42))
 }
+
+pub fn test_variadic_defmacro_only() {
+  let env = builtins.create_global_env()
+
+  let assert Ok(Some(#(def_expr, _))) =
+    parser.parse("(defmacro my-list (. args) (cons (quote list) args))")
+  let assert Ok(#(_, env1)) = eval.eval(env, def_expr)
+
+  let assert Ok(Some(#(call_expr, _))) = parser.parse("(my-list 1 2 3)")
+  let assert Ok(#(result, _)) = eval.eval(env1, call_expr)
+
+  let expected =
+    value.Cons(
+      value.Integer(1),
+      value.Cons(value.Integer(2), value.Cons(value.Integer(3), value.Nil)),
+    )
+  should.equal(result, expected)
+}
+
+pub fn test_variadic_defmacro_no_args() {
+  let env = builtins.create_global_env()
+
+  let assert Ok(Some(#(def_expr, _))) =
+    parser.parse("(defmacro my-nil (. args) args)")
+  let assert Ok(#(_, env1)) = eval.eval(env, def_expr)
+
+  let assert Ok(Some(#(call_expr, _))) = parser.parse("(my-nil)")
+  let assert Ok(#(result, _)) = eval.eval(env1, call_expr)
+
+  should.equal(result, value.Nil)
+}
+
+pub fn test_variadic_defmacro_fixed_and_variadic() {
+  let env = builtins.create_global_env()
+
+  let assert Ok(Some(#(def_expr, _))) =
+    parser.parse(
+      "(defmacro my-cons (x . args) (cons (quote cons) (cons x args)))",
+    )
+  let assert Ok(#(_, env1)) = eval.eval(env, def_expr)
+
+  let assert Ok(Some(#(call_expr, _))) = parser.parse("(my-cons 1 2)")
+  let assert Ok(#(result, _)) = eval.eval(env1, call_expr)
+
+  let expected = value.Cons(value.Integer(1), value.Integer(2))
+  should.equal(result, expected)
+}
+
+pub fn test_variadic_defmacro_expand() {
+  let env = builtins.create_global_env()
+
+  let assert Ok(Some(#(def_expr, _))) =
+    parser.parse("(defmacro my-list (. args) (cons (quote list) args))")
+  let assert Ok(#(_, env1)) = eval.eval(env, def_expr)
+
+  let assert Ok(Some(#(expand_expr, _))) =
+    parser.parse("(expand-macro (my-list 1 2 3))")
+  let assert Ok(#(result, _)) = eval.eval(env1, expand_expr)
+
+  let expected =
+    value.Cons(
+      value.Symbol("list"),
+      value.Cons(
+        value.Integer(1),
+        value.Cons(value.Integer(2), value.Cons(value.Integer(3), value.Nil)),
+      ),
+    )
+  should.equal(result, expected)
+}
+
+pub fn test_variadic_defmacro_arity_error() {
+  let env = builtins.create_global_env()
+
+  let assert Ok(Some(#(def_expr, _))) =
+    parser.parse("(defmacro my-macro (x y . args) x)")
+  let assert Ok(#(_, env1)) = eval.eval(env, def_expr)
+
+  let assert Ok(Some(#(call_expr, _))) = parser.parse("(my-macro 1)")
+
+  case eval.eval(env1, call_expr) {
+    Error(error.ArityError("macro", 2, 1)) -> True
+    _ -> False
+  }
+  |> should.be_true()
+}
