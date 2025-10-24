@@ -10,6 +10,7 @@ import lispy/builtins
 import lispy/environment.{type Environment}
 import lispy/parser
 import lispy/value.{type Value}
+import simplifile
 
 pub type EvaluationError {
   ZeroDivisionError
@@ -173,7 +174,7 @@ fn load_file_helper(
   filepath: String,
   env: Environment(Value),
 ) -> Result(Environment(Value), String) {
-  case simplifile_read(filepath) {
+  case simplifile.read(filepath) {
     Ok(content) -> load_string(content, env)
     Error(_) -> Error("Could not read file: " <> filepath)
   }
@@ -199,9 +200,6 @@ fn load_string(
     Error(err) -> Error("Parse error: " <> err)
   }
 }
-
-@external(erlang, "simplifile", "read")
-fn simplifile_read(filepath: String) -> Result(String, Nil)
 
 fn parser_parse(
   input: String,
@@ -524,12 +522,24 @@ fn builtin_print(args: List(Value)) -> Result(Value, EvaluationError) {
 fn builtin_read(args: List(Value)) -> Result(Value, EvaluationError) {
   case args {
     [] -> {
-      // TODO: реализовать чтение из stdin
-      Error(TypeError("read not implemented yet"))
+      case read_from_stdin("") {
+        Ok(input) -> {
+          let trimmed = string.trim(input)
+          case parser.parse(trimmed) {
+            Ok(option.Some(#(parsed, _))) -> Ok(parsed)
+            Ok(option.None) -> Ok(value.Nil)
+            Error(_) -> Error(TypeError("Failed to parse input"))
+          }
+        }
+        Error(_) -> Ok(value.Nil)
+      }
     }
     _ -> Error(ArityError("read", 0, list.length(args)))
   }
 }
+
+@external(erlang, "lispy_ffi", "read_line")
+fn read_from_stdin(prompt: String) -> Result(String, Nil)
 
 fn builtin_eval(args: List(Value)) -> Result(Value, EvaluationError) {
   case args {

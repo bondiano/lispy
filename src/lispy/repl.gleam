@@ -68,19 +68,14 @@ fn repl_loop(env: Environment(Value)) -> Nil {
 }
 
 fn read_line() -> String {
-  let result = erlang_read_line("")
-  case is_eof(result) {
-    True -> ":quit"
-    False -> string.trim(result)
+  case erlang_read_line("") {
+    Ok(line) -> string.trim(line)
+    Error(_) -> ":quit"
   }
 }
 
-@external(erlang, "io", "get_line")
-fn erlang_read_line(prompt: String) -> String
-
-fn is_eof(value: String) -> Bool {
-  value == "eof"
-}
+@external(erlang, "lispy_ffi", "read_line")
+fn erlang_read_line(prompt: String) -> Result(String, Nil)
 
 fn eval_string(
   input: String,
