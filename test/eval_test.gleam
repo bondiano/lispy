@@ -299,7 +299,7 @@ pub fn eval_lambda_nested_application_test() {
 
 pub fn eval_define_variable_test() {
   let env = builtins.create_global_env()
-  let assert Ok(Some(#(parsed, _))) = parser.parse("(define x 42)")
+  let assert Ok(Some(#(parsed, _))) = parser.parse("(def x 42)")
   let assert Ok(#(_, env1)) = eval.eval(env, parsed)
 
   case environment.get(env1, "x") {
@@ -312,7 +312,7 @@ pub fn eval_define_variable_test() {
 pub fn eval_define_function_test() {
   let env = builtins.create_global_env()
   let assert Ok(Some(#(define_form, _))) =
-    parser.parse("(define add (lambda (x y) (+ x y)))")
+    parser.parse("(def add (lambda (x y) (+ x y)))")
   let assert Ok(#(_, env1)) = eval.eval(env, define_form)
 
   case environment.get(env1, "add") {
@@ -324,7 +324,7 @@ pub fn eval_define_function_test() {
 
 pub fn eval_use_defined_variable_test() {
   let env = builtins.create_global_env()
-  let assert Ok(Some(#(define_form, _))) = parser.parse("(define x 10)")
+  let assert Ok(Some(#(define_form, _))) = parser.parse("(def x 10)")
   let assert Ok(#(_, env1)) = eval.eval(env, define_form)
 
   let assert Ok(Some(#(use_form, _))) = parser.parse("(+ x 5)")
@@ -337,7 +337,7 @@ pub fn eval_use_defined_variable_test() {
 
 pub fn eval_set_existing_variable_test() {
   let env = builtins.create_global_env()
-  let assert Ok(Some(#(define_form, _))) = parser.parse("(define x 10)")
+  let assert Ok(Some(#(define_form, _))) = parser.parse("(def x 10)")
   let assert Ok(#(_, env1)) = eval.eval(env, define_form)
 
   let assert Ok(Some(#(set_form, _))) = parser.parse("(set! x 20)")
@@ -377,7 +377,7 @@ pub fn eval_begin_with_side_effects_test() {
   let input =
     "
     (begin
-      (define x 10)
+      (def x 10)
       (set! x 20)
       x)
   "
@@ -403,7 +403,7 @@ pub fn eval_factorial_recursive_test() {
   let env = builtins.create_global_env()
   let fact_def =
     "
-    (define fact
+    (def fact
       (lambda (n)
         (if (< n 2)
             1
@@ -423,10 +423,10 @@ pub fn eval_higher_order_function_test() {
   let input =
     "
     (begin
-      (define apply-twice
+      (def apply-twice
         (lambda (f x)
           (f (f x))))
-      (define add1
+      (def add1
         (lambda (x)
           (+ x 1)))
       (apply-twice add1 5))
@@ -442,13 +442,13 @@ pub fn eval_map_implementation_test() {
   let input =
     "
     (begin
-      (define map
+      (def map
         (lambda (f lst)
           (if (= lst nil)
               nil
               (cons (f (car lst))
                     (map f (cdr lst))))))
-      (define double
+      (def double
         (lambda (x) (* x 2)))
       (map double '(1 2 3)))
   "
@@ -642,7 +642,7 @@ pub fn test_apply_with_variadic_lambda() {
 pub fn test_recursive_variadic_sum() {
   let input =
     "(begin
-       (define sum (lambda (. args)
+       (def sum (lambda (. args)
          (if (null? args)
              0
              (+ (car args) (apply sum (cdr args))))))

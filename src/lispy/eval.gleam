@@ -44,7 +44,7 @@ pub fn eval(
       case name {
         "quote" -> eval_quote(environment, rest)
         "if" -> eval_if(environment, rest)
-        "define" -> eval_define(environment, rest)
+        "def" -> eval_define(environment, rest)
         "set!" -> eval_set(environment, rest)
         "lambda" | "λ" -> eval_lambda(environment, rest)
         "defmacro" -> eval_defmacro(environment, rest)

@@ -1,6 +1,6 @@
-(define repl (lambda ()
+(def repl (lambda ()
   (begin
-    (define input (read))
+    (def input (read))
 
     (if (= input 'quit)
         (begin
