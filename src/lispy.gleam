@@ -78,7 +78,7 @@ fn run_eval(code: String) -> Nil {
       io.println("Error: Empty input")
     }
     Error(err) -> {
-      io.println("Parse error: " <> err)
+      io.println("Parse error: " <> parser.error_to_string(err))
     }
   }
 }
@@ -100,7 +100,7 @@ fn eval_all(
       }
     }
     Ok(None) -> Ok(env)
-    Error(err) -> Error("Parse error: " <> err)
+    Error(err) -> Error("Parse error: " <> parser.error_to_string(err))
   }
 }
 

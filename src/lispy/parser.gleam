@@ -1,4 +1,5 @@
 import gleam/dict
+import gleam/erlang/atom
 import gleam/float
 import gleam/int
 import gleam/list
@@ -8,79 +9,145 @@ import gleam/string
 
 import lispy/value.{type Value}
 
-pub fn parse(input: String) -> Result(Option(#(Value, String)), String) {
+pub type ParseError {
+  UnexpectedEndOfInput(context: String)
+  UnclosedDelimiter(delimiter: String, position: Int)
+  UnterminatedString(position: Int)
+  InvalidEscape(sequence: String, position: Int)
+  EmptyAtom(position: Int)
+  ExpectedClosingParen(after: String, position: Int)
+  InvalidCharacter(char: String, position: Int)
+  UnexpectedToken(expected: String, got: String, position: Int)
+}
+
+pub fn error_to_string(error: ParseError) -> String {
+  case error {
+    UnexpectedEndOfInput(context) ->
+      "Unexpected end of input while parsing " <> context
+
+    UnclosedDelimiter(delimiter, pos) ->
+      "Unclosed '"
+      <> delimiter
+      <> "' starting at position "
+      <> int.to_string(pos)
+
+    UnterminatedString(pos) ->
+      "Unterminated string starting at position " <> int.to_string(pos)
+
+    InvalidEscape(seq, pos) ->
+      "Invalid escape sequence '\\"
+      <> seq
+      <> "' at position "
+      <> int.to_string(pos)
+
+    EmptyAtom(pos) -> "Empty atom at position " <> int.to_string(pos)
+
+    ExpectedClosingParen(after, pos) ->
+      "Expected ')' after " <> after <> " at position " <> int.to_string(pos)
+
+    InvalidCharacter(char, pos) ->
+      "Invalid character '" <> char <> "' at position " <> int.to_string(pos)
+
+    UnexpectedToken(expected, got, pos) ->
+      "Expected "
+      <> expected
+      <> " but got '"
+      <> got
+      <> "' at position "
+      <> int.to_string(pos)
+  }
+}
+
+pub fn parse(input: String) -> Result(Option(#(Value, String)), ParseError) {
   let trimmed = skip_whitespace_and_comments(input)
 
   case trimmed {
     "" -> Ok(None)
     _ -> {
-      use #(value, rest) <- result.map(parse_value(trimmed))
+      use #(value, rest) <- result.map(parse_value(input, trimmed))
       Some(#(value, rest))
     }
   }
 }
 
-fn parse_value(input: String) -> Result(#(Value, String), String) {
+fn parse_value(
+  original: String,
+  input: String,
+) -> Result(#(Value, String), ParseError) {
   let input = skip_whitespace_and_comments(input)
 
   case input {
-    "" -> Error("Unexpected end of input")
+    "" -> Error(UnexpectedEndOfInput("value"))
 
-    "(" <> rest -> parse_list(rest)
+    "(" <> rest -> parse_list(original, rest)
 
-    "{" <> rest -> parse_dict(rest)
+    "{" <> rest -> parse_dict(original, rest)
 
     "'" <> rest -> {
-      use #(value, rest) <- result.try(parse_value(rest))
+      use #(value, rest) <- result.try(parse_value(original, rest))
       Ok(#(list_to_cons([value.Symbol("quote"), value]), rest))
     }
 
-    "\"" <> rest -> parse_string(rest, "")
+    "\"" <> rest -> {
+      let pos = calculate_position(original, input)
+      parse_string(rest, "", pos)
+    }
 
-    // Boolean, number, or symbol
-    _ -> parse_atom(input)
+    _ -> parse_atom(original, input)
   }
 }
 
-fn parse_list(input: String) -> Result(#(Value, String), String) {
-  parse_list_items(input, [])
+fn parse_list(
+  original: String,
+  input: String,
+) -> Result(#(Value, String), ParseError) {
+  let pos = calculate_position(original, input)
+  parse_list_items(original, input, [], pos)
 }
 
-fn parse_dict(input: String) -> Result(#(Value, String), String) {
-  parse_dict_items(input, [])
+fn parse_dict(
+  original: String,
+  input: String,
+) -> Result(#(Value, String), ParseError) {
+  let pos = calculate_position(original, input)
+  parse_dict_items(original, input, [], pos)
 }
 
 fn parse_dict_items(
+  original: String,
   input: String,
   acc: List(#(Value, Value)),
-) -> Result(#(Value, String), String) {
+  start_pos: Int,
+) -> Result(#(Value, String), ParseError) {
   let input = skip_whitespace_and_comments(input)
 
   case input {
-    "" -> Error("Unclosed dict")
+    "" -> Error(UnclosedDelimiter("{", start_pos))
 
     "}" <> rest -> {
       Ok(#(value.Dict(dict.from_list(acc)), rest))
     }
 
     _ -> {
-      use #(key, rest) <- result.try(parse_value(input))
+      use #(key, rest) <- result.try(parse_value(original, input))
       let rest = skip_whitespace_and_comments(rest)
 
-      use #(val, rest) <- result.try(parse_value(rest))
-      parse_dict_items(rest, [#(key, val), ..acc])
+      use #(val, rest) <- result.try(parse_value(original, rest))
+      parse_dict_items(original, rest, [#(key, val), ..acc], start_pos)
     }
   }
 }
 
 fn parse_list_items(
+  original: String,
   input: String,
   acc: List(Value),
-) -> Result(#(Value, String), String) {
+  start_pos: Int,
+) -> Result(#(Value, String), ParseError) {
   let input = skip_whitespace_and_comments(input)
 
   case input {
-    "" -> Error("Unclosed list")
+    "" -> Error(UnclosedDelimiter("(", start_pos))
 
     ")" <> rest -> {
       Ok(#(list_to_cons(list.reverse(acc)), rest))
@@ -89,7 +156,7 @@ fn parse_list_items(
     // Improper list (a . b) or variadic params (. args) or (x . args)
     "." <> rest -> {
       let rest = skip_whitespace_and_comments(rest)
-      use #(tail, rest) <- result.try(parse_value(rest))
+      use #(tail, rest) <- result.try(parse_value(original, rest))
       let rest = skip_whitespace_and_comments(rest)
 
       case rest {
@@ -106,48 +173,63 @@ fn parse_list_items(
             }
           }
         }
-        _ -> Error("Expected ) after dot")
+        _ -> {
+          let pos = calculate_position(original, rest)
+          Error(ExpectedClosingParen("dot notation", pos))
+        }
       }
     }
 
     _ -> {
-      use #(value, rest) <- result.try(parse_value(input))
-      parse_list_items(rest, [value, ..acc])
+      use #(value, rest) <- result.try(parse_value(original, input))
+      parse_list_items(original, rest, [value, ..acc], start_pos)
     }
   }
 }
 
-fn parse_string(input: String, acc: String) -> Result(#(Value, String), String) {
+fn parse_string(
+  input: String,
+  acc: String,
+  start_pos: Int,
+) -> Result(#(Value, String), ParseError) {
   case input {
-    "" -> Error("Unterminated string")
+    "" -> Error(UnterminatedString(start_pos))
 
     "\"" <> rest -> Ok(#(value.String(acc), rest))
 
-    "\\\\" <> rest -> parse_string(rest, acc <> "\\")
-    "\\\"" <> rest -> parse_string(rest, acc <> "\"")
-    "\\n" <> rest -> parse_string(rest, acc <> "\n")
-    "\\t" <> rest -> parse_string(rest, acc <> "\t")
-    "\\r" <> rest -> parse_string(rest, acc <> "\r")
+    "\\\\" <> rest -> parse_string(rest, acc <> "\\", start_pos)
+    "\\\"" <> rest -> parse_string(rest, acc <> "\"", start_pos)
+    "\\n" <> rest -> parse_string(rest, acc <> "\n", start_pos)
+    "\\t" <> rest -> parse_string(rest, acc <> "\t", start_pos)
+    "\\r" <> rest -> parse_string(rest, acc <> "\r", start_pos)
 
     _ -> {
       case string.pop_grapheme(input) {
-        Ok(#(char, rest)) -> parse_string(rest, acc <> char)
-        Error(_) -> Error("Invalid string")
+        Ok(#(char, rest)) -> parse_string(rest, acc <> char, start_pos)
+        Error(_) -> Error(UnterminatedString(start_pos))
       }
     }
   }
 }
 
-fn parse_atom(input: String) -> Result(#(Value, String), String) {
+fn parse_atom(
+  original: String,
+  input: String,
+) -> Result(#(Value, String), ParseError) {
   let atom_str = take_until_delimiter(input)
   let rest = string.drop_start(input, string.length(atom_str))
 
   case atom_str {
-    "" -> Error("Empty atom")
+    "" -> {
+      let pos = calculate_position(original, input)
+      Error(EmptyAtom(pos))
+    }
 
     // Booleans
     "#t" | "true" -> Ok(#(value.Boolean(True), rest))
     "#f" | "false" -> Ok(#(value.Boolean(False), rest))
+
+    "@" <> atom_name -> Ok(#(atom.create(atom_name) |> value.Atom, rest))
 
     // Nil
     "nil" -> Ok(#(value.Nil, rest))
@@ -173,6 +255,10 @@ fn parse_atom(input: String) -> Result(#(Value, String), String) {
 // --------------
 // Helpers
 // --------------
+
+fn calculate_position(original: String, remaining: String) -> Int {
+  string.length(original) - string.length(remaining)
+}
 
 fn skip_whitespace_and_comments(input: String) -> String {
   let trimmed = string.trim_start(input)

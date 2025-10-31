@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Lispy REPL wrapper with readline support
+#
+# This script provides enhanced REPL experience with:
+# - Arrow key navigation (↑/↓) for command history
+# - Ctrl+R for history search
+# - Tab completion
+# - Better line editing
+#
+# Requirements:
+#   - rlwrap (install via: brew install rlwrap on macOS, or apt-get install rlwrap on Linux)
+#
+# Usage:
+#   ./lispy-repl
+
+set -e
+
+# Check if rlwrap is available
+if command -v rlwrap &> /dev/null; then
+    # Run with rlwrap for full readline support
+    exec rlwrap -H .lispy_history -C lispy gleam run -- repl
+else
+    # Fallback to regular REPL
+    echo "Note: Install 'rlwrap' for arrow key history navigation"
+    echo "  macOS: brew install rlwrap"
+    echo "  Linux: sudo apt-get install rlwrap"
+    echo ""
+    exec gleam run -- repl
+fi

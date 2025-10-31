@@ -1,4 +1,5 @@
 import gleam/dict
+import gleam/erlang/atom.{type Atom}
 import gleam/float
 import gleam/int
 import gleam/list
@@ -18,6 +19,8 @@ pub type Value {
   String(text: String)
   Symbol(name: String)
   Boolean(Bool)
+
+  Atom(atom: Atom)
 
   Lambda(arguments: Params, body: List(Value), environment: Environment(Value))
   Macro(arguments: Params, body: List(Value))
@@ -45,6 +48,7 @@ pub fn to_string(value: Value) -> String {
     String(text) -> "\"" <> text <> "\""
     Symbol(name) -> name
     Builtin(name) -> name
+    Atom(atom) -> "@" <> atom.to_string(atom)
     Boolean(b) ->
       case b {
         True -> "true"

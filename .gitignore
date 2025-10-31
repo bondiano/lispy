@@ -2,3 +2,12 @@
 *.ez
 /build
 erl_crash.dump
+
+.lispy_history
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

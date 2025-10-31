@@ -1,4 +1,5 @@
 import gleam/dict
+import gleam/erlang/atom
 import gleam/float
 import gleam/int
 import gleam/io
@@ -28,6 +29,7 @@ pub fn eval(
     | value.String(_)
     | value.Boolean(_)
     | value.Nil
+    | value.Atom(_)
     | value.Dict(_) -> Ok(#(form, environment))
 
     value.Lambda(_, _, _) | value.Macro(_, _) | value.Builtin(_) ->
@@ -240,6 +242,7 @@ fn parser_parse(
   input: String,
 ) -> Result(option.Option(#(Value, String)), String) {
   parser.parse(input)
+  |> result.map_error(parser.error_to_string)
 }
 
 fn error_to_string_helper(err: EvaluationError) -> String {
@@ -451,6 +454,7 @@ fn apply_builtin(
     "eval" -> builtin_eval(args)
     "symbol" -> builtin_symbol(args)
     "apply" -> builtin_apply_fn(current_env, args)
+    "erlang-call" -> builtin_erlang_call(args)
 
     _ -> Error(UndefinedVariableError(name))
   }
@@ -617,7 +621,8 @@ fn builtin_read(args: List(Value)) -> Result(Value, EvaluationError) {
           case parser.parse(trimmed) {
             Ok(option.Some(#(parsed, _))) -> Ok(parsed)
             Ok(option.None) -> Ok(value.Nil)
-            Error(_) -> Error(TypeError("Failed to parse input"))
+            Error(err) ->
+              Error(TypeError("Parse error: " <> parser.error_to_string(err)))
           }
         }
         Error(_) -> Ok(value.Nil)
@@ -627,8 +632,20 @@ fn builtin_read(args: List(Value)) -> Result(Value, EvaluationError) {
   }
 }
 
-@external(erlang, "lispy_ffi", "read_line")
+@external(erlang, "lispy@io_ffi", "get_line")
 fn read_from_stdin(prompt: String) -> Result(String, Nil)
+
+@external(erlang, "lispy@erlang_ffi", "erlang_apply")
+fn erlang_apply_ffi(
+  module: atom.Atom,
+  function: atom.Atom,
+  args: List(Value),
+) -> Result(Value, ErlangCallError)
+
+pub type ErlangCallError {
+  ErlangError(reason: String)
+  InvalidArguments
+}
 
 fn builtin_eval(args: List(Value)) -> Result(Value, EvaluationError) {
   case args {
@@ -658,6 +675,39 @@ fn builtin_apply_fn(
       apply(current_env, func, gleam_args)
     }
     _ -> Error(ArityError("apply", 2, list.length(args)))
+  }
+}
+
+fn builtin_erlang_call(args: List(Value)) -> Result(Value, EvaluationError) {
+  case args {
+    [value.Atom(module), value.Atom(function), ..rest_args] -> {
+      let module_str = atom.to_string(module)
+      let function_str = atom.to_string(function)
+      case erlang_apply_ffi(module, function, rest_args) {
+        Ok(result) -> Ok(result)
+        Error(InvalidArguments) ->
+          Error(TypeError(
+            "erlang-call: invalid arguments for "
+            <> module_str
+            <> ":"
+            <> function_str,
+          ))
+        Error(ErlangError(reason)) ->
+          Error(TypeError(
+            "erlang-call error in "
+            <> module_str
+            <> ":"
+            <> function_str
+            <> " - "
+            <> reason,
+          ))
+      }
+    }
+    [_, _, ..] ->
+      Error(TypeError(
+        "erlang-call requires atom module and atom function as first two arguments",
+      ))
+    _ -> Error(ArityError("erlang-call", 2, list.length(args)))
   }
 }
 

@@ -35,6 +35,8 @@ pub fn create_global_env() -> Environment(Value) {
     |> environment.define("eval", value.Builtin("eval"))
     |> environment.define("symbol", value.Builtin("symbol"))
     |> environment.define("apply", value.Builtin("apply"))
+    // Erlang interop
+    |> environment.define("erlang-call", value.Builtin("erlang-call"))
 
   env
 }
