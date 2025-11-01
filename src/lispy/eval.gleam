@@ -158,7 +158,13 @@ fn eval_defmacro(
       use body_list <- result.try(list_to_gleam_list(body))
       let macro_value = value.Macro(parsed_params, body_list)
       let new_env = environment.define(environment, name, macro_value)
-      Ok(#(macro_value, new_env))
+
+      let result_form =
+        value.Cons(
+          value.Symbol("defmacro"),
+          value.Cons(value.Symbol(name), value.Cons(params, body)),
+        )
+      Ok(#(result_form, new_env))
     }
     _ -> Error(InvalidFormError(value.Cons(value.Symbol("defmacro"), args)))
   }
